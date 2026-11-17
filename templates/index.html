@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="مساعد المستفيدين — تجربة عربية محلية لخدمات الكلية التطبيقية بشرورة">
+  <meta name="description" content="مساعد المستفيدين — خدمة عربية لطلاب وموظفي الكلية التطبيقية بشرورة">
   <meta name="csrf-token" content="{{ csrf }}"><meta name="theme-color" content="#24233e">
   <title>مُعين | مساعد المستفيدين</title>
   <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
@@ -21,7 +21,7 @@
   <div class="nav-label">مساحتك</div>
   <nav aria-label="القائمة الرئيسية">
     <a href="#home" data-nav="home"><svg><use href="#i-home"/></svg>نظرة عامة</a>
-    <a href="#chat" data-nav="chat"><svg><use href="#i-spark"/></svg>المساعد الذكي<span class="tiny-badge">تجريبي</span></a>
+    <a href="#chat" data-nav="chat"><svg><use href="#i-spark"/></svg>المساعد الذكي</a>
     <a href="#history" data-nav="history"><svg><use href="#i-clock"/></svg>محادثاتي</a>
     <a href="#tickets" data-nav="tickets"><svg><use href="#i-ticket"/></svg>طلباتي<span class="nav-count" id="ticket-count">0</span></a>
     <a href="#services" data-nav="services"><svg><use href="#i-book"/></svg>دليل الخدمات</a>
@@ -32,10 +32,10 @@
   <div class="sidebar-bottom"><div class="side-note"><span class="note-icon">✧</span><strong>معلومة أقرب، تجربة أسهل.</strong><p>خطوتك الأولى للوصول إلى خدماتك الجامعية.</p><a href="#about">تعرّف على مُعين <span>↖</span></a></div><a class="help-link" href="#about"><svg><use href="#i-help"/></svg>المساعدة والخصوصية</a><div class="profile"><span class="avatar">ز</span><div>أهلًا، زائر<small>مساحة المستفيد</small></div><span class="profile-dot"></span></div></div>
 </aside>
 <div class="app-shell">
-  <header class="topbar"><div class="breadcrumb"><button class="menu-button" id="menu" aria-label="فتح القائمة">☰</button><span>مساحة المستفيد</span><span class="slash">/</span><strong id="page-label">نظرة عامة</strong></div><div class="top-actions"><a class="portal-switch" href="/staff/">بوابة الموظف ↗</a><span class="local-status"><i></i>نسخة محلية تجريبية</span><button class="icon-button" id="help-button" aria-label="المساعدة"><svg><use href="#i-help"/></svg></button><span class="avatar small">ز</span></div></header>
+  <header class="topbar"><div class="breadcrumb"><button class="menu-button" id="menu" aria-label="فتح القائمة">☰</button><span>مساحة المستفيد</span><span class="slash">/</span><strong id="page-label">نظرة عامة</strong></div><div class="top-actions"><a class="portal-switch" href="/staff/">بوابة الموظف ↗</a><span class="local-status"><i></i>خدمة المستفيدين</span><button class="icon-button" id="help-button" aria-label="المساعدة"><svg><use href="#i-help"/></svg></button><span class="avatar small">ز</span></div></header>
   <main id="main" tabindex="-1"></main>
-  <footer><span>مُعين · صُمّم ليجعل تجربتك الجامعية أسهل</span><span>مشروع تخرج أكاديمي <span class="footer-dot">•</span> جامعة نجران</span></footer>
+  <footer><span>مُعين · صُمّم ليجعل تجربتك الجامعية أسهل</span><span>الكلية التطبيقية بشرورة <span class="footer-dot">•</span> جامعة نجران</span></footer>
 </div>
-<dialog id="ticket-dialog"><form id="ticket-form"><div class="dialog-heading"><div><span class="eyebrow">نحن هنا لمساعدتك</span><h2>إنشاء طلب جديد</h2></div><button type="button" class="close-dialog icon-button" aria-label="إغلاق">×</button></div><p class="form-note">سيظهر الطلب لموظف البوابة المحلية. تابع الرد من طلباتك والإشعارات. لا تدخل بيانات حساسة.</p><label>عنوان الطلب<input name="subject" required maxlength="120" placeholder="كيف يمكننا مساعدتك؟"></label><label>الخدمة<select name="category"><option>القبول والتسجيل</option><option>الخطط الدراسية</option><option>التدريب التعاوني</option><option>الخدمات الإلكترونية</option><option>متطلبات التخرج</option><option>استفسار عام</option></select></label><label>تفاصيل الاستفسار<textarea name="details" rows="4" required maxlength="2000" placeholder="اكتب التفاصيل التي تساعدنا على فهم طلبك…"></textarea></label><button class="primary-button" type="submit">حفظ الطلب <svg><use href="#i-arrow"/></svg></button><p class="form-error" role="alert"></p></form></dialog>
+<dialog id="ticket-dialog"><form id="ticket-form"><div class="dialog-heading"><div><span class="eyebrow">نحن هنا لمساعدتك</span><h2>إنشاء طلب جديد</h2></div><button type="button" class="close-dialog icon-button" aria-label="إغلاق">×</button></div><p class="form-note">سيظهر الطلب لموظف بوابة الخدمة. تابع الرد من طلباتك والإشعارات. لا تدخل بيانات حساسة.</p><label>عنوان الطلب<input name="subject" required maxlength="120" placeholder="كيف يمكننا مساعدتك؟"></label><label>الخدمة<select name="category"><option>القبول والتسجيل</option><option>الخطط الدراسية</option><option>التدريب التعاوني</option><option>الخدمات الإلكترونية</option><option>متطلبات التخرج</option><option>استفسار عام</option></select></label><label>تفاصيل الاستفسار<textarea name="details" rows="4" required maxlength="2000" placeholder="اكتب التفاصيل التي تساعدنا على فهم طلبك…"></textarea></label><button class="primary-button" type="submit">حفظ الطلب <svg><use href="#i-arrow"/></svg></button><p class="form-error" role="alert"></p></form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body></html>
