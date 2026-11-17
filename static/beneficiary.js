@@ -1,9 +1,11 @@
 Object.assign(pageTitles,{knowledge:'مركز المعرفة',article:'قراءة المقالة',notifications:'الإشعارات',settings:'إعدادات المساحة',service:'تفاصيل الخدمة',ticket:'تفاصيل الطلب'});
 function applyPreferences(){
   const p=state.preferences||{name:'زائر',theme:'light'};
+  const auth=state.auth||{role:'visitor',label:'زائر'};
   document.body.classList.toggle('dark',p.theme==='dark');
   $$('.avatar').forEach(el=>el.textContent=p.name.slice(0,1));
-  $('.profile>div').innerHTML=`أهلًا، ${esc(p.name)}<small>${esc(p.audience||'مساحة المستفيد')}</small>`;
+  $('.profile>div').innerHTML=`أهلًا، ${esc(p.name)}<small>دور ${esc(auth.label||p.audience||'زائر')}</small>`;
+  const roleBtn=$('#role-button');if(roleBtn)roleBtn.textContent=`الدور: ${auth.label||'زائر'}`;
   $('#notification-count').textContent=ar((state.notifications||[]).filter(n=>!n.is_read).length);
   if($('#chat-form'))applyChatMode();
 }
@@ -46,9 +48,42 @@ function renderNotifications(){
 }
 function renderSettings(){
   const p=state.preferences;
-  $('#main').innerHTML=heading('مساحتك، على طريقتك.', 'اختيارات بسيطة تجعل التجربة أقرب لك.')+`<div class="detail-grid"><form id="preferences-form" class="panel settings-form"><h2>ملف المستفيد</h2><p class="subtle-note">حدّث اسم العرض وفئتك لتمييز مساحتك. حساب الموظف يُدار من بوابة الموظف.</p><label>اسم العرض<input name="name" required maxlength="50" value="${esc(p.name)}" autocomplete="nickname"></label><label>فئة المستفيد<select name="audience">${['زائر','طالب / طالبة','عضو هيئة تدريس'].map(s=>`<option ${p.audience===s?'selected':''}>${s}</option>`).join('')}</select></label><fieldset class="theme-field"><legend>مظهر المساحة</legend><div class="theme-options"><label><input type="radio" name="theme" value="light" ${p.theme==='light'?'checked':''}><span class="theme-swatch light-swatch">☀</span>فاتح</label><label><input type="radio" name="theme" value="dark" ${p.theme==='dark'?'checked':''}><span class="theme-swatch dark-swatch">☾</span>داكن</label></div></fieldset><button class="primary-button" type="submit">حفظ التفضيلات ${icon('arrow')}</button><p class="form-error" role="alert"></p></form><aside class="panel detail-aside"><span class="support-icon">${icon('shield')}</span><h3>حسابك في هذه المساحة</h3><p>تُحفظ تفضيلاتك ومحادثاتك وطلباتك بحسب جلستك. حسابات الموظفين منفصلة وتُنشأ من بوابة الموظف مع اسم مستخدم وكلمة مرور.</p><a href="#about" class="text-button">المزيد عن الخصوصية ←</a></aside></div>`;
-  $('#preferences-form').addEventListener('submit',async e=>{e.preventDefault();const b=$('button[type=submit]',e.target);b.disabled=true;try{await api('/api/preferences',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});await refreshState();toast('تم حفظ تفضيلات مساحتك.');}catch(err){$('.form-error',e.target).textContent=err.message;}finally{b.disabled=false;}});
+  const auth=state.auth||{role:'visitor',label:'زائر'};
+  const audience=auth.role==='student'?'طالب':'زائر';
+  $('#main').innerHTML=heading('الدور والحساب.', 'ثلاثة أدوار: أدمن، طالب، وزائر.')+`<div class="detail-grid"><form id="preferences-form" class="panel settings-form"><h2>ملفك الحالي</h2><p class="subtle-note">دورك الآن: <strong>${esc(auth.label)}</strong>. إعدادات الشات ومفتاح API متاحة للأدمن فقط من <a href="/admin/">بوابة الأدمن</a>.</p><label>اسم العرض<input name="name" required maxlength="50" value="${esc(p.name)}" autocomplete="nickname"></label><label>الدور<input name="audience" value="${audience}" readonly><span class="field-help">${auth.role==='student'?'أنت مسجّل كطالب بحساب.':'أنت زائر. يمكنك إنشاء حساب طالب من زر الدور والحساب.'}</span></label><fieldset class="theme-field"><legend>مظهر المساحة</legend><div class="theme-options"><label><input type="radio" name="theme" value="light" ${p.theme==='light'?'checked':''}><span class="theme-swatch light-swatch">☀</span>فاتح</label><label><input type="radio" name="theme" value="dark" ${p.theme==='dark'?'checked':''}><span class="theme-swatch dark-swatch">☾</span>داكن</label></div></fieldset><button class="primary-button" type="submit">حفظ التفضيلات ${icon('arrow')}</button><p class="form-error" role="alert"></p></form><aside class="panel detail-aside"><span class="support-icon">${icon('user')}</span><h3>تبديل الدور</h3><p>الطالب يسجّل دخولًا بحسابه. الزائر يكمل بدون تسجيل. الأدمن يدخل من بوابته لضبط API.</p><button type="button" class="outline-button" id="open-auth">${auth.role==='student'?'إدارة حساب الطالب':'دخول طالب / زائر'} ${icon('arrow')}</button>${auth.role==='student'?`<button type="button" class="text-button" id="logout-student">تسجيل الخروج والتحول لزائر</button>`:''}</aside></div>`;
+  $('#preferences-form').addEventListener('submit',async e=>{e.preventDefault();const b=$('button[type=submit]',e.target);b.disabled=true;try{const data=Object.fromEntries(new FormData(e.target));await api('/api/preferences',{method:'POST',body:JSON.stringify(data)});await refreshState();toast('تم حفظ تفضيلات مساحتك.');}catch(err){$('.form-error',e.target).textContent=err.message;}finally{b.disabled=false;}});
+  $('#open-auth')?.addEventListener('click',()=>openAuthDialog());
+  $('#logout-student')?.addEventListener('click',async()=>{try{const data=await api('/api/auth/logout',{method:'POST',body:'{}'});if(data.csrf)$('meta[name=csrf-token]').content=data.csrf;await refreshState();toast('أصبحت زائرًا الآن.');renderSettings();}catch(e){toast(e.message);}});
 }
+let authMode='login';
+function openAuthDialog(mode='login'){
+  authMode=mode;
+  const form=$('#auth-user-form');form.reset();$('.form-error',form).textContent='';
+  $$('#auth-mode button').forEach(b=>b.classList.toggle('active',b.dataset.mode===authMode));
+  const visitor=authMode==='visitor';
+  $('#auth-fields').hidden=visitor;
+  $('#auth-name-wrap').hidden=authMode!=='register';
+  form.elements.username.required=!visitor;form.elements.password.required=!visitor;
+  form.elements.name.required=authMode==='register';
+  $('#auth-dialog-title').textContent=authMode==='register'?'إنشاء حساب طالب':authMode==='visitor'?'المتابعة كزائر':'دخول الطالب';
+  $('#auth-submit').textContent=authMode==='visitor'?'ابدأ كزائر':authMode==='register'?'إنشاء الحساب':'تسجيل الدخول';
+  $('#auth-dialog').showModal();
+}
+$('#role-button')?.addEventListener('click',()=>openAuthDialog(state.auth?.role==='student'?'login':'login'));
+$('#auth-mode')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)openAuthDialog(b.dataset.mode);});
+$('.close-auth')?.addEventListener('click',()=>$('#auth-dialog').close());
+$('#auth-user-form')?.addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.target,button=$('#auth-submit');button.disabled=true;$('.form-error',form).textContent='';
+  try{
+    let data;
+    if(authMode==='visitor')data=await api('/api/auth/visitor',{method:'POST',body:'{}'});
+    else{const body=Object.fromEntries(new FormData(form));data=await api(authMode==='register'?'/api/auth/register':'/api/auth/login',{method:'POST',body:JSON.stringify(body)});}
+    if(data.csrf)$('meta[name=csrf-token]').content=data.csrf;
+    await refreshState();$('#auth-dialog').close();toast(authMode==='visitor'?'تم فتح جلسة زائر.':authMode==='register'?'تم إنشاء حساب الطالب.':'مرحبًا بك كطالب.');
+    if(location.hash==='#settings')renderSettings();
+  }catch(err){$('.form-error',form).textContent=err.message;}
+  finally{button.disabled=false;}
+});
 async function renderExtras(page,id,version){
   if(page==='ticket')return renderTicket(id,version);
   ({knowledge:renderKnowledge,article:()=>renderArticle(id),service:()=>renderService(id),notifications:renderNotifications,settings:renderSettings}[page])();

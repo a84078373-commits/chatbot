@@ -18,6 +18,7 @@ const pageTitles = {home:'نظرة عامة',chat:'المساعد الذكي',hi
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: {'Content-Type':'application/json', 'X-CSRF-Token':$('meta[name="csrf-token"]').content, ...(options.headers || {})} });
   const data = await response.json();
+  if (data.csrf) $('meta[name="csrf-token"]').content = data.csrf;
   if (!response.ok) throw new Error(data.error || 'تعذر إتمام العملية، حاول مرة أخرى.');
   return data;
 }

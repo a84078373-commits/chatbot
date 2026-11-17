@@ -11,7 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 temporary=tempfile.TemporaryDirectory(prefix='mueen-test-')
 os.environ['ASSISTANT_DB']=str(Path(temporary.name)/'test.db')
 os.environ['AI_ENCRYPTION_KEY_FILE']=str(Path(temporary.name)/'key')
-from app import app, db, ai, ai_attempts, login_attempts
+from app import app, db, ai, ai_attempts, login_attempts, student_attempts
 import requests
 
 class BackendTests(unittest.TestCase):
@@ -23,12 +23,12 @@ class BackendTests(unittest.TestCase):
         with db() as c:
             for table in ['notifications','ticket_replies']:
                 c.execute(f'DELETE FROM {table}')
-            for table in ['messages','tickets','conversations','staff','preferences']:
+            for table in ['messages','tickets','conversations','staff','accounts','preferences']:
                 c.execute(f'DELETE FROM {table}')
             c.execute("DELETE FROM knowledge WHERE source='test-source'")
             c.execute("UPDATE ai_config SET provider='local',revision=1,guidance='',max_tokens=2048")
             c.execute("UPDATE ai_providers SET model='',secret='',test_ok=NULL,tested_at=NULL")
-        ai_attempts.clear();login_attempts.clear()
+        ai_attempts.clear();login_attempts.clear();student_attempts.clear()
         self.visitor=app.test_client();self.other=app.test_client();self.staff=app.test_client()
         self.vh=self.headers(self.visitor);self.oh=self.headers(self.other);self.sh=self.headers(self.staff)
 
@@ -89,9 +89,24 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.staff.post('/api/staff/knowledge',json=data,headers=self.sh).status_code,200)
         article=next(a for a in self.visitor.get('/api/state').json['knowledge'] if a['id']==data['id'])
         self.assertEqual(article['version'],2)
-        self.assertEqual(self.visitor.post('/api/preferences',json={'name':'سارة','audience':'طالب / طالبة','theme':'dark'},headers=self.vh).status_code,200)
+        self.assertEqual(self.visitor.post('/api/preferences',json={'name':'سارة','audience':'زائر','theme':'dark'},headers=self.vh).status_code,200)
         self.assertEqual(self.visitor.get('/api/state').json['preferences']['theme'],'dark')
         self.assertEqual(self.other.get('/api/state').json['preferences']['theme'],'light')
+
+    def test_roles_admin_student_visitor(self):
+        self.assertEqual(self.visitor.get('/api/state').json['auth']['role'],'visitor')
+        self.assertEqual(self.visitor.post('/api/auth/register',json={'username':'student1','name':'طالب','password':'student-pass-123'},headers=self.vh).status_code,201)
+        state=self.visitor.get('/api/state').json
+        self.assertEqual(state['auth']['role'],'student')
+        self.assertEqual(state['preferences']['audience'],'طالب')
+        self.assertEqual(self.visitor.post('/api/preferences',json={'name':'طالب محدث','audience':'طالب','theme':'light'},headers=self.vh).status_code,200)
+        self.assertEqual(self.visitor.get('/api/staff/ai').status_code,401)
+        self.setup_staff()
+        session=self.staff.get('/api/staff/session').json
+        self.assertEqual(session['user']['role'],'admin')
+        self.assertEqual(self.staff.get('/api/staff/ai').status_code,200)
+        self.assertEqual(self.visitor.post('/api/auth/logout',json={},headers=self.vh).status_code,200)
+        self.assertEqual(self.visitor.get('/api/state').json['auth']['role'],'visitor')
 
     def test_credentials_encrypted_masked_and_disable(self):
         self.setup_staff();self.enable()

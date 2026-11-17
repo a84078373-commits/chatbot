@@ -43,25 +43,35 @@ def db():
     conn.execute('PRAGMA foreign_keys=ON')
     return conn
 
+ROLES = {'admin': 'أدمن', 'student': 'طالب', 'visitor': 'زائر'}
+AUDIENCES = {'visitor': 'زائر', 'student': 'طالب'}
+
 with db() as conn:
     conn.executescript('''
     CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, source TEXT, feedback INTEGER, created TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, subject TEXT NOT NULL, details TEXT NOT NULL, category TEXT NOT NULL, status TEXT DEFAULT 'جديد', created TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS staff (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'student', created TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS ticket_replies (id INTEGER PRIMARY KEY, ticket_id INTEGER NOT NULL REFERENCES tickets(id), staff_id INTEGER NOT NULL REFERENCES staff(id), content TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS knowledge (id INTEGER PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL, question TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', version INTEGER NOT NULL DEFAULT 1, updated TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS preferences (owner TEXT PRIMARY KEY, name TEXT DEFAULT 'زائر', audience TEXT DEFAULT 'زائر', theme TEXT DEFAULT 'light');
     CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, ticket_id INTEGER NOT NULL, text TEXT NOT NULL, is_read INTEGER NOT NULL DEFAULT 0, created TEXT DEFAULT CURRENT_TIMESTAMP);
     ''')
+    staff_cols = {row[1] for row in conn.execute('PRAGMA table_info(staff)')}
+    if 'role' not in staff_cols:
+        conn.execute("ALTER TABLE staff ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
+    conn.execute("UPDATE staff SET role='admin' WHERE role IS NULL OR role=''")
     conn.execute('CREATE INDEX IF NOT EXISTS idx_conversation_owner ON conversations(owner)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_ticket_owner ON tickets(owner)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_notification_owner ON notifications(owner)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username)')
     if not conn.execute('SELECT id FROM knowledge LIMIT 1').fetchone():
         conn.executemany('INSERT INTO knowledge(title,category,question,content,source,status) VALUES (?,?,?,?,?,?)', [
-            ('كيف أستخدم مُعين؟', 'دليل الاستخدام', 'كيف أبدأ محادثة؟', 'افتح المساعد من القائمة ثم اكتب سؤالك واضغط الإرسال. تُحفظ محادثتك تلقائيًا في «محادثاتي». إذا فعّل الموظف GPT أو Gemini، راجع تنبيه المزوّد ووافق على إرسال السياق قبل استخدام المحادثة.', 'دليل استخدام مُعين', 'published'),
-            ('من السؤال إلى طلب المساعدة', 'دليل الاستخدام', 'كيف أتابع استفسارًا لا توجد له إجابة؟', 'من «طلباتي» أنشئ طلبًا وحدد الخدمة وأضف تفاصيل استفسارك. يرد الموظف من بوابة الخدمة ويغيّر الحالة. سيظهر الرد في تفاصيل طلبك ويصلك إشعار داخل الموقع.', 'دليل خدمة المستفيدين', 'published'),
-            ('خصوصية المحادثات والطلبات', 'الخصوصية', 'أين تحفظ بياناتي؟', 'تُحفظ السجلات في النظام وتُفصل حسب جلسة المتصفح، ويمكن للموظف المخوّل مراجعة الطلبات. عند تفعيل GPT أو Gemini تُرسل الأسئلة وآخر أربع رسائل والمقاطع المعرفية ذات الصلة إلى المزوّد المحدد، بعد موافقتك من شاشة المحادثة. لا تشارك بيانات حساسة.', 'آلية عمل الخدمة وإعدادات المزوّد', 'published'),
+            ('كيف أستخدم مُعين؟', 'دليل الاستخدام', 'كيف أبدأ محادثة؟', 'افتح المساعد من القائمة ثم اكتب سؤالك واضغط الإرسال. تُحفظ محادثتك تلقائيًا في «محادثاتي». إذا فعّل الأدمن GPT أو Gemini، راجع تنبيه المزوّد ووافق على إرسال السياق قبل استخدام المحادثة.', 'دليل استخدام مُعين', 'published'),
+            ('من السؤال إلى طلب المساعدة', 'دليل الاستخدام', 'كيف أتابع استفسارًا لا توجد له إجابة؟', 'من «طلباتي» أنشئ طلبًا وحدد الخدمة وأضف تفاصيل استفسارك. يرد الأدمن من بوابته ويغيّر الحالة. سيظهر الرد في تفاصيل طلبك ويصلك إشعار داخل الموقع.', 'دليل خدمة المستفيدين', 'published'),
+            ('خصوصية المحادثات والطلبات', 'الخصوصية', 'أين تحفظ بياناتي؟', 'تُحفظ السجلات في النظام حسب دورك (زائر أو طالب). إعدادات الشات ومفاتيح API متاحة لدور الأدمن فقط. عند تفعيل GPT أو Gemini تُرسل الأسئلة والسياق بعد موافقتك. لا تشارك بيانات حساسة.', 'آلية عمل الخدمة وإعدادات المزوّد', 'published'),
+            ('أدوار النظام', 'دليل الاستخدام', 'ما أدوار المستخدمين في مُعين؟', 'في النظام ثلاثة أدوار: الأدمن يدير الطلبات والمعرفة ويضبط مفتاح الذكاء الاصطناعي، والطالب يدخل بحسابه ويتابع محادثاته وطلباته، والزائر يستخدم الخدمة مباشرة دون تسجيل.', 'دليل أدوار مُعين', 'published'),
         ])
 
 ai = AIService(db, os.environ.get('AI_ENCRYPTION_KEY_FILE', str(ROOT / '.ai-encryption-key')))
@@ -80,20 +90,56 @@ def payload():
 def valid_text(data, key, limit, minimum=1):
     return isinstance(data.get(key), str) and minimum <= len(data[key].strip()) <= limit
 
+def owner_key():
+    return session['visitor']
+
+def current_user_role():
+    if session.get('staff_id') and time.time() - session.get('staff_active', 0) <= 1800:
+        return 'admin'
+    if session.get('account_id') and time.time() - session.get('account_active', 0) <= 1800:
+        return 'student'
+    return 'visitor'
+
+def auth_payload():
+    role = current_user_role()
+    user = None
+    if role == 'admin':
+        with db() as conn:
+            row = conn.execute('SELECT id,name,username,role FROM staff WHERE id=?', (session['staff_id'],)).fetchone()
+            user = dict(row) if row else None
+    elif role == 'student':
+        with db() as conn:
+            row = conn.execute('SELECT id,name,username,role FROM accounts WHERE id=?', (session['account_id'],)).fetchone()
+            user = dict(row) if row else None
+    return {'role': role, 'label': ROLES[role], 'user': user}
+
 def staff_required(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):
         if not session.get('staff_id') or time.time() - session.get('staff_active', 0) > 1800:
             session.pop('staff_id', None)
-            return jsonify(error='سجّل دخولك إلى بوابة الموظف أولًا.'), 401
+            session.pop('staff_active', None)
+            return jsonify(error='سجّل دخولك إلى بوابة الأدمن أولًا.'), 401
+        with db() as conn:
+            row = conn.execute('SELECT role FROM staff WHERE id=?', (session['staff_id'],)).fetchone()
+        if not row or row['role'] != 'admin':
+            return jsonify(error='هذه العملية متاحة لدور الأدمن فقط.'), 403
         session['staff_active'] = time.time()
         return fn(*args, **kwargs)
     return wrapped
+
+def admin_required(fn):
+    return staff_required(fn)
 
 @app.before_request
 def visitor():
     if 'visitor' not in session:
         session['visitor'] = secrets.token_hex(24)
+    if session.get('account_id') and time.time() - session.get('account_active', 0) > 1800:
+        session.pop('account_id', None)
+        session.pop('account_active', None)
+        if str(session.get('visitor', '')).startswith('student:'):
+            session['visitor'] = secrets.token_hex(24)
     if 'csrf' not in session:
         session['csrf'] = secrets.token_hex(24)
     if request.method == 'POST' and request.headers.get('X-CSRF-Token') != session['csrf']:
@@ -104,19 +150,23 @@ def index():
     return render_template('index.html', csrf=session['csrf'])
 
 @app.get('/staff/')
+@app.get('/admin/')
 def staff_page():
     return render_template('staff.html', csrf=session['csrf'])
 
 @app.get('/api/state')
 def state():
+    owner = owner_key()
     with db() as conn:
-        conversations = [dict(r) for r in conn.execute('SELECT * FROM conversations WHERE owner=? ORDER BY id DESC', (session['visitor'],))]
-        tickets = [dict(r) for r in conn.execute('SELECT * FROM tickets WHERE owner=? ORDER BY id DESC', (session['visitor'],))]
-        count = conn.execute('SELECT COUNT(*) FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.owner=? AND m.role=\'user\'', (session['visitor'],)).fetchone()[0]
-        prefs = conn.execute('SELECT name,audience,theme FROM preferences WHERE owner=?', (session['visitor'],)).fetchone()
-        notifications = [dict(r) for r in conn.execute('SELECT * FROM notifications WHERE owner=? ORDER BY id DESC LIMIT 100', (session['visitor'],))]
+        conversations = [dict(r) for r in conn.execute('SELECT * FROM conversations WHERE owner=? ORDER BY id DESC', (owner,))]
+        tickets = [dict(r) for r in conn.execute('SELECT * FROM tickets WHERE owner=? ORDER BY id DESC', (owner,))]
+        count = conn.execute('SELECT COUNT(*) FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.owner=? AND m.role=\'user\'', (owner,)).fetchone()[0]
+        prefs = conn.execute('SELECT name,audience,theme FROM preferences WHERE owner=?', (owner,)).fetchone()
+        notifications = [dict(r) for r in conn.execute('SELECT * FROM notifications WHERE owner=? ORDER BY id DESC LIMIT 100', (owner,))]
         knowledge = [dict(r) for r in conn.execute("SELECT * FROM knowledge WHERE status='published' ORDER BY updated DESC,id DESC")]
-    return jsonify(conversations=conversations, tickets=tickets, questions=count, preferences=dict(prefs) if prefs else {'name':'زائر','audience':'زائر','theme':'light'}, notifications=notifications, knowledge=knowledge, ai=ai.public())
+    role = current_user_role()
+    default_prefs = {'name': AUDIENCES[role] if role in AUDIENCES else 'زائر', 'audience': AUDIENCES.get(role, 'زائر'), 'theme': 'light'}
+    return jsonify(conversations=conversations, tickets=tickets, questions=count, preferences=dict(prefs) if prefs else default_prefs, notifications=notifications, knowledge=knowledge, ai=ai.public(), auth=auth_payload())
 
 @app.get('/api/conversations/<int:cid>')
 def history(cid):
@@ -207,17 +257,104 @@ def ticket_detail(tid):
 @app.post('/api/preferences')
 def preferences():
     data = payload()
-    if not valid_text(data, 'name', 50) or data.get('audience') not in ['زائر','طالب / طالبة','عضو هيئة تدريس'] or data.get('theme') not in ['light','dark']:
-        return jsonify(error='راجع الاسم والفئة والمظهر.'), 400
+    role = current_user_role()
+    allowed = ['زائر'] if role == 'visitor' else ['طالب'] if role == 'student' else ['زائر', 'طالب']
+    if not valid_text(data, 'name', 50) or data.get('audience') not in allowed or data.get('theme') not in ['light','dark']:
+        return jsonify(error='راجع الاسم والدور والمظهر.'), 400
     with db() as conn:
-        conn.execute('INSERT INTO preferences(owner,name,audience,theme) VALUES (?,?,?,?) ON CONFLICT(owner) DO UPDATE SET name=excluded.name,audience=excluded.audience,theme=excluded.theme', (session['visitor'],data['name'].strip(),data['audience'],data['theme']))
+        conn.execute('INSERT INTO preferences(owner,name,audience,theme) VALUES (?,?,?,?) ON CONFLICT(owner) DO UPDATE SET name=excluded.name,audience=excluded.audience,theme=excluded.theme', (owner_key(),data['name'].strip(),data['audience'],data['theme']))
     return jsonify(ok=True)
 
 @app.post('/api/notifications/read')
 def read_notifications():
     with db() as conn:
-        conn.execute('UPDATE notifications SET is_read=1 WHERE owner=?', (session['visitor'],))
+        conn.execute('UPDATE notifications SET is_read=1 WHERE owner=?', (owner_key(),))
     return jsonify(ok=True)
+
+def start_staff_session(user_id):
+    session.pop('account_id', None)
+    session.pop('account_active', None)
+    session['staff_id']=user_id
+    session['staff_active']=time.time()
+    session.setdefault('csrf',secrets.token_hex(24))
+    session.permanent=True
+
+def start_student_session(user_id, name):
+    session.pop('staff_id', None)
+    session.pop('staff_active', None)
+    session['account_id'] = user_id
+    session['account_active'] = time.time()
+    session['visitor'] = f'student:{user_id}'
+    session.setdefault('csrf', secrets.token_hex(24))
+    session.permanent = True
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO preferences(owner,name,audience,theme) VALUES (?,?,?,?) ON CONFLICT(owner) DO UPDATE SET name=CASE WHEN preferences.name IN ('زائر','طالب') THEN excluded.name ELSE preferences.name END,audience=excluded.audience",
+            (session['visitor'], name, 'طالب', 'light'),
+        )
+
+@app.get('/api/auth/session')
+def auth_session():
+    return jsonify(**auth_payload(), csrf=session['csrf'], roles=ROLES)
+
+student_attempts = {}
+@app.post('/api/auth/register')
+def student_register():
+    data = payload()
+    if not valid_text(data, 'username', 60, 3) or not valid_text(data, 'name', 60) or not valid_text(data, 'password', 128, 10):
+        return jsonify(error='أدخل الاسم واسم مستخدم من ٣ أحرف وكلمة مرور من ١٠ أحرف على الأقل.'), 400
+    username = data['username'].strip().lower()
+    with db() as conn:
+        if conn.execute('SELECT 1 FROM accounts WHERE username=?', (username,)).fetchone() or conn.execute('SELECT 1 FROM staff WHERE username=?', (username,)).fetchone():
+            return jsonify(error='اسم المستخدم مستخدم مسبقًا.'), 409
+        uid = conn.execute(
+            "INSERT INTO accounts(username,name,password_hash,role) VALUES (?,?,?,'student')",
+            (username, data['name'].strip(), generate_password_hash(data['password'])),
+        ).lastrowid
+    start_student_session(uid, data['name'].strip())
+    return jsonify(ok=True, csrf=session['csrf'], auth=auth_payload()), 201
+
+@app.post('/api/auth/login')
+def student_login():
+    data = payload()
+    if not valid_text(data, 'username', 60) or not valid_text(data, 'password', 128):
+        return jsonify(error='أدخل اسم المستخدم وكلمة المرور.'), 400
+    key = request.remote_addr
+    now = time.time()
+    attempts = [stamp for stamp in student_attempts.get(key, []) if now - stamp < 300]
+    if len(attempts) >= 10:
+        return jsonify(error='محاولات كثيرة. حاول بعد خمس دقائق.'), 429
+    with db() as conn:
+        user = conn.execute("SELECT * FROM accounts WHERE username=? AND role='student'", (data['username'].strip().lower(),)).fetchone()
+    if not user or not check_password_hash(user['password_hash'], data['password']):
+        student_attempts[key] = attempts + [now]
+        return jsonify(error='اسم المستخدم أو كلمة المرور غير صحيحة.'), 401
+    student_attempts.pop(key, None)
+    start_student_session(user['id'], user['name'])
+    return jsonify(ok=True, csrf=session['csrf'], auth=auth_payload())
+
+@app.post('/api/auth/logout')
+def student_logout():
+    session.pop('account_id', None)
+    session.pop('account_active', None)
+    session['visitor'] = secrets.token_hex(24)
+    session.setdefault('csrf', secrets.token_hex(24))
+    return jsonify(ok=True, csrf=session['csrf'], auth=auth_payload())
+
+@app.post('/api/auth/visitor')
+def continue_as_visitor():
+    session.pop('account_id', None)
+    session.pop('account_active', None)
+    session.pop('staff_id', None)
+    session.pop('staff_active', None)
+    session['visitor'] = secrets.token_hex(24)
+    session.setdefault('csrf', secrets.token_hex(24))
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO preferences(owner,name,audience,theme) VALUES (?,?,?,?) ON CONFLICT(owner) DO UPDATE SET audience='زائر'",
+            (session['visitor'], 'زائر', 'زائر', 'light'),
+        )
+    return jsonify(ok=True, csrf=session['csrf'], auth=auth_payload())
 
 @app.get('/api/staff/session')
 def staff_session():
@@ -225,15 +362,9 @@ def staff_session():
         setup = not conn.execute('SELECT 1 FROM staff LIMIT 1').fetchone()
         user = None
         if session.get('staff_id') and time.time()-session.get('staff_active',0)<=1800:
-            row=conn.execute('SELECT id,name,username FROM staff WHERE id=?',(session['staff_id'],)).fetchone()
+            row=conn.execute('SELECT id,name,username,role FROM staff WHERE id=?',(session['staff_id'],)).fetchone()
             user=dict(row) if row else None
-    return jsonify(setup_required=setup, user=user, csrf=session['csrf'])
-
-def start_staff_session(user_id):
-    session['staff_id']=user_id
-    session['staff_active']=time.time()
-    session.setdefault('csrf',secrets.token_hex(24))
-    session.permanent=True
+    return jsonify(setup_required=setup, user=user, role='admin' if user else None, csrf=session['csrf'])
 
 @app.post('/api/staff/setup')
 def staff_setup():
@@ -246,8 +377,10 @@ def staff_setup():
     with db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         if conn.execute('SELECT 1 FROM staff LIMIT 1').fetchone():
-            return jsonify(error='تم إعداد حساب الموظف مسبقًا. سجّل الدخول.'),409
-        uid=conn.execute('INSERT INTO staff(username,name,password_hash) VALUES (?,?,?)',(data['username'].strip().lower(),data['name'].strip(),generate_password_hash(data['password']))).lastrowid
+            return jsonify(error='تم إعداد حساب الأدمن مسبقًا. سجّل الدخول.'),409
+        if conn.execute('SELECT 1 FROM accounts WHERE username=?', (data['username'].strip().lower(),)).fetchone():
+            return jsonify(error='اسم المستخدم مستخدم مسبقًا.'),409
+        uid=conn.execute("INSERT INTO staff(username,name,password_hash,role) VALUES (?,?,?,'admin')",(data['username'].strip().lower(),data['name'].strip(),generate_password_hash(data['password']))).lastrowid
     start_staff_session(uid)
     return jsonify(ok=True,csrf=session['csrf']),201
 
@@ -263,7 +396,7 @@ def staff_login():
     if len(attempts)>=10:
         return jsonify(error='محاولات كثيرة. حاول بعد خمس دقائق.'),429
     with db() as conn:
-        user=conn.execute('SELECT * FROM staff WHERE username=?',(data['username'].strip().lower(),)).fetchone()
+        user=conn.execute("SELECT * FROM staff WHERE username=? AND role='admin'",(data['username'].strip().lower(),)).fetchone()
     if not user or not check_password_hash(user['password_hash'],data['password']):
         login_attempts[key]=attempts+[now]
         return jsonify(error='اسم المستخدم أو كلمة المرور غير صحيحة.'),401
@@ -368,12 +501,12 @@ def staff_account():
     return jsonify(ok=True)
 
 @app.get('/api/staff/ai')
-@staff_required
+@admin_required
 def ai_settings():
     return jsonify(ai.settings())
 
 @app.post('/api/staff/ai')
-@staff_required
+@admin_required
 def ai_settings_save():
     try:
         ai.save(payload())
@@ -382,7 +515,7 @@ def ai_settings_save():
         return jsonify(error=str(err)),400
 
 @app.post('/api/staff/ai/test')
-@staff_required
+@admin_required
 def ai_connection_test():
     if not ai_slots.acquire(blocking=False):
         return jsonify(error='هناك طلبات قيد المعالجة؛ انتظر لحظات.'),429
@@ -394,7 +527,7 @@ def ai_connection_test():
         ai_slots.release()
 
 @app.post('/api/staff/ai/disconnect')
-@staff_required
+@admin_required
 def ai_disconnect():
     try:
         ai.disconnect(payload().get('provider'))
