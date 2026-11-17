@@ -1,0 +1,19 @@
+__pycache__/
+.venv/
+instance/
+.session-key
+.ai-encryption-key
+project-extracted.txt
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.pyc
+output/*.png
+output/check-live.cjs
+output/check-ui.cjs
+README - Copy.md
+*.pdf
