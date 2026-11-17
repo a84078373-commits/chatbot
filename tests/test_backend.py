@@ -11,7 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 temporary=tempfile.TemporaryDirectory(prefix='mueen-test-')
 os.environ['ASSISTANT_DB']=str(Path(temporary.name)/'test.db')
 os.environ['AI_ENCRYPTION_KEY_FILE']=str(Path(temporary.name)/'key')
-from app import app, db, ai, ai_attempts, login_attempts, student_attempts
+from app import app, db, ai, ai_attempts, login_attempts, student_attempts, seed_demo_accounts
 import requests
 
 class BackendTests(unittest.TestCase):
@@ -107,6 +107,22 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.staff.get('/api/staff/ai').status_code,200)
         self.assertEqual(self.visitor.post('/api/auth/logout',json={},headers=self.vh).status_code,200)
         self.assertEqual(self.visitor.get('/api/state').json['auth']['role'],'visitor')
+
+    def test_demo_accounts_saved_in_database(self):
+        seed_demo_accounts()
+        demo=self.visitor.get('/api/auth/demo').json
+        self.assertTrue(demo['enabled'])
+        with db() as c:
+            self.assertEqual(c.execute("SELECT role FROM staff WHERE username='admin'").fetchone()[0],'admin')
+            self.assertEqual(c.execute("SELECT role FROM accounts WHERE username='student'").fetchone()[0],'student')
+            admin_hash=c.execute("SELECT password_hash FROM staff WHERE username='admin'").fetchone()[0]
+        self.assertNotEqual(admin_hash,'demo-admin-123')
+        self.assertEqual(self.staff.post('/api/staff/login',json={'username':'admin','password':'demo-admin-123'},headers=self.sh).status_code,200)
+        self.assertEqual(self.visitor.post('/api/auth/login',json={'username':'student','password':'demo-student-123'},headers=self.vh).status_code,200)
+        seed_demo_accounts()
+        with db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM staff WHERE username='admin'").fetchone()[0],1)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM accounts WHERE username='student'").fetchone()[0],1)
 
     def test_credentials_encrypted_masked_and_disable(self):
         self.setup_staff();self.enable()

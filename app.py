@@ -45,6 +45,38 @@ def db():
 
 ROLES = {'admin': 'أدمن', 'student': 'طالب', 'visitor': 'زائر'}
 AUDIENCES = {'visitor': 'زائر', 'student': 'طالب'}
+DEMO_ACCOUNTS = [
+    {'role': 'admin', 'username': 'admin', 'name': 'أدمن تجريبي', 'password': 'demo-admin-123'},
+    {'role': 'student', 'username': 'student', 'name': 'طالب تجريبي', 'password': 'demo-student-123'},
+]
+
+def seed_demo_accounts():
+    """Create experimental demo accounts once and keep them in the database."""
+    if os.environ.get('SKIP_DEMO_ACCOUNTS', '').lower() in ('1', 'true', 'yes'):
+        return
+    with db() as conn:
+        for account in DEMO_ACCOUNTS:
+            username = account['username']
+            password_hash = generate_password_hash(account['password'])
+            if account['role'] == 'admin':
+                if conn.execute('SELECT 1 FROM staff WHERE username=?', (username,)).fetchone():
+                    continue
+                conn.execute(
+                    "INSERT INTO staff(username,name,password_hash,role) VALUES (?,?,?,'admin')",
+                    (username, account['name'], password_hash),
+                )
+            else:
+                if conn.execute('SELECT 1 FROM accounts WHERE username=?', (username,)).fetchone():
+                    continue
+                uid = conn.execute(
+                    "INSERT INTO accounts(username,name,password_hash,role) VALUES (?,?,?,'student')",
+                    (username, account['name'], password_hash),
+                ).lastrowid
+                owner = f'student:{uid}'
+                conn.execute(
+                    "INSERT OR IGNORE INTO preferences(owner,name,audience,theme) VALUES (?,?,?,?)",
+                    (owner, account['name'], 'طالب', 'light'),
+                )
 
 with db() as conn:
     conn.executescript('''
@@ -71,8 +103,10 @@ with db() as conn:
             ('كيف أستخدم مُعين؟', 'دليل الاستخدام', 'كيف أبدأ محادثة؟', 'افتح المساعد من القائمة ثم اكتب سؤالك واضغط الإرسال. تُحفظ محادثتك تلقائيًا في «محادثاتي». إذا فعّل الأدمن GPT أو Gemini، راجع تنبيه المزوّد ووافق على إرسال السياق قبل استخدام المحادثة.', 'دليل استخدام مُعين', 'published'),
             ('من السؤال إلى طلب المساعدة', 'دليل الاستخدام', 'كيف أتابع استفسارًا لا توجد له إجابة؟', 'من «طلباتي» أنشئ طلبًا وحدد الخدمة وأضف تفاصيل استفسارك. يرد الأدمن من بوابته ويغيّر الحالة. سيظهر الرد في تفاصيل طلبك ويصلك إشعار داخل الموقع.', 'دليل خدمة المستفيدين', 'published'),
             ('خصوصية المحادثات والطلبات', 'الخصوصية', 'أين تحفظ بياناتي؟', 'تُحفظ السجلات في النظام حسب دورك (زائر أو طالب). إعدادات الشات ومفاتيح API متاحة لدور الأدمن فقط. عند تفعيل GPT أو Gemini تُرسل الأسئلة والسياق بعد موافقتك. لا تشارك بيانات حساسة.', 'آلية عمل الخدمة وإعدادات المزوّد', 'published'),
-            ('أدوار النظام', 'دليل الاستخدام', 'ما أدوار المستخدمين في مُعين؟', 'في النظام ثلاثة أدوار: الأدمن يدير الطلبات والمعرفة ويضبط مفتاح الذكاء الاصطناعي، والطالب يدخل بحسابه ويتابع محادثاته وطلباته، والزائر يستخدم الخدمة مباشرة دون تسجيل.', 'دليل أدوار مُعين', 'published'),
+            ('أدوار النظام', 'دليل الاستخدام', 'ما أدوار المستخدمين في مُعين؟', 'في النظام ثلاثة أدوار: الأدمن يدير الطلبات والمعرفة ويضبط مفتاح الذكاء الاصطناعي، والطالب يدخل بحسابه ويتابع محادثاته وطلباته، والزائر يستخدم الخدمة مباشرة دون تسجيل. توجد حسابات تجريبية محفوظة في قاعدة البيانات للتجربة.', 'دليل أدوار مُعين', 'published'),
         ])
+
+seed_demo_accounts()
 
 ai = AIService(db, os.environ.get('AI_ENCRYPTION_KEY_FILE', str(ROOT / '.ai-encryption-key')))
 ai_slots = threading.BoundedSemaphore(2)
@@ -296,6 +330,25 @@ def start_student_session(user_id, name):
 @app.get('/api/auth/session')
 def auth_session():
     return jsonify(**auth_payload(), csrf=session['csrf'], roles=ROLES)
+
+@app.get('/api/auth/demo')
+def auth_demo():
+    """Public demo credentials for experimental accounts stored in the database."""
+    return jsonify(
+        enabled=os.environ.get('SKIP_DEMO_ACCOUNTS', '').lower() not in ('1', 'true', 'yes'),
+        accounts=[
+            {
+                'role': item['role'],
+                'label': ROLES[item['role']],
+                'username': item['username'],
+                'password': item['password'],
+                'name': item['name'],
+                'portal': '/admin/' if item['role'] == 'admin' else '/',
+            }
+            for item in DEMO_ACCOUNTS
+        ],
+        visitor={'role': 'visitor', 'label': ROLES['visitor'], 'note': 'الزائر لا يحتاج حسابًا؛ تُحفظ جلسته وبياناته في قاعدة البيانات بمعرّف جلسة.'},
+    )
 
 student_attempts = {}
 @app.post('/api/auth/register')

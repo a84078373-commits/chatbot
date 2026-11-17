@@ -67,7 +67,20 @@ function openAuthDialog(mode='login'){
   form.elements.name.required=authMode==='register';
   $('#auth-dialog-title').textContent=authMode==='register'?'إنشاء حساب طالب':authMode==='visitor'?'المتابعة كزائر':'دخول الطالب';
   $('#auth-submit').textContent=authMode==='visitor'?'ابدأ كزائر':authMode==='register'?'إنشاء الحساب':'تسجيل الدخول';
+  let hint=$('#demo-account-hint');
+  if(!hint){hint=document.createElement('p');hint.id='demo-account-hint';hint.className='form-note';form.insertBefore(hint,$('#auth-submit'));}
+  hint.hidden=true;hint.textContent='';
   $('#auth-dialog').showModal();
+  if(authMode==='login'||authMode==='register'){
+    api('/api/auth/demo').then(demo=>{
+      if(!demo.enabled)return;
+      const student=demo.accounts.find(a=>a.role==='student');
+      if(!student)return;
+      hint.hidden=false;
+      hint.innerHTML=`حساب طالب تجريبي محفوظ في قاعدة البيانات: <strong dir="ltr">${esc(student.username)}</strong> / <strong dir="ltr">${esc(student.password)}</strong>`;
+      if(authMode==='login'){form.elements.username.value=student.username;form.elements.password.value=student.password;}
+    }).catch(()=>{});
+  }
 }
 $('#role-button')?.addEventListener('click',()=>openAuthDialog(state.auth?.role==='student'?'login':'login'));
 $('#auth-mode')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)openAuthDialog(b.dataset.mode);});
