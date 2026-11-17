@@ -8,16 +8,24 @@ from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 from flask import Flask, jsonify, render_template, request, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from ai_service import AIService, AIError
 
 ROOT = Path(__file__).resolve().parent
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 secret_path = ROOT / '.session-key'
 if not secret_path.exists():
     secret_path.write_text(secrets.token_hex(32), encoding='utf-8')
 app.secret_key = os.environ.get('SECRET_KEY') or secret_path.read_text(encoding='utf-8').strip()
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict', MAX_CONTENT_LENGTH=65536)
+_secure_cookies = os.environ.get('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes') or bool(os.environ.get('RENDER'))
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=_secure_cookies,
+    MAX_CONTENT_LENGTH=65536,
+)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 DB = Path(os.environ.get('ASSISTANT_DB', ROOT / 'instance' / 'assistant.db'))
 DB.parent.mkdir(exist_ok=True)
@@ -230,7 +238,8 @@ def start_staff_session(user_id):
 @app.post('/api/staff/setup')
 def staff_setup():
     data=payload()
-    if request.remote_addr not in ['127.0.0.1','::1']:
+    allow_remote = os.environ.get('ALLOW_REMOTE_STAFF_SETUP', '').lower() in ('1', 'true', 'yes')
+    if not allow_remote and request.remote_addr not in ['127.0.0.1', '::1']:
         return jsonify(error='الإعداد الأول متاح من الجهاز المحلي فقط.'),403
     if not valid_text(data,'username',60,3) or not valid_text(data,'name',60) or not valid_text(data,'password',128,10):
         return jsonify(error='أدخل الاسم واسم مستخدم من ٣ أحرف وكلمة مرور من ١٠ أحرف على الأقل.'),400
@@ -394,4 +403,5 @@ def ai_disconnect():
         return jsonify(error=str(err)),400
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=int(os.environ.get('PORT', '5000')), debug=False)
+    host = os.environ.get('HOST', '127.0.0.1')
+    app.run(host=host, port=int(os.environ.get('PORT', '5000')), debug=False)

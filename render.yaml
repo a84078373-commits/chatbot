@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: chatbot
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOW_REMOTE_STAFF_SETUP
+        value: "1"
+      - key: ASSISTANT_DB
+        value: /opt/render/project/src/instance/assistant.db
