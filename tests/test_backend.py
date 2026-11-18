@@ -180,7 +180,9 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.staff.post('/api/staff/ai/test',json={},headers=self.sh).status_code,502)
         send.side_effect=None;send.return_value=self.response(answer={'answer':'غير موثق','source_ids':[99999],'abstain':False})
         result=self.visitor.post('/api/chat',json={'question':'اختبار','cloud_consent':ai.public()['consent_id']},headers=self.vh)
-        self.assertEqual(result.status_code,502)
+        self.assertEqual(result.status_code,200,result.json)
+        self.assertNotIn('غير موثق',result.json['message']['content'])
+        self.assertNotIn('لم أجد إجابة مطابقة',result.json['message']['content'])
 
     def test_validation_account_and_expiry(self):
         self.setup_staff()

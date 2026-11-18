@@ -29,7 +29,10 @@ SYSTEM = '''أنت مُعين، مساعد عربي لخدمة مستفيدي ا
 أعد JSON فقط بالشكل {"answer":"نص الرد","source_ids":[1],"abstain":false}.
 source_ids هي أرقام المصادر المستخدمة فعليًا فقط. عند الامتناع استخدم قائمة فارغة وabstain=true.
 يسمح بالترحيب والتعريف بالمساعد دون مصدر جامعي. لا تستخدم معرفة النموذج الداخلية لحقائق الجامعة.'''
-FALLBACK = 'لا تتوفر معلومات موثّقة كافية للإجابة عن هذا السؤال. يمكنك إنشاء طلب من «طلباتي» ليراجعه الموظف، ومتابعة الرد والإشعارات من الموقع.'
+FALLBACK = (
+    'وصلتني رسالتك. أقدر أساعدك في القبول والتسجيل والخطط الدراسية والتدريب التعاوني '
+    'والخدمات الإلكترونية ومتطلبات التخرج. اكتب سؤالك بوضوح، أو أنشئ طلبًا من «طلباتي» عند الحاجة لمتابعة الأدمن.'
+)
 
 class AIError(Exception):
     pass
@@ -213,42 +216,64 @@ class AIService:
 
     def local_answer(self, question):
         q=question.strip()
+        guide='دليل خدمة مُعين'
+        help_menu=(
+            'أقدر أساعدك في: القبول والتسجيل، الخطط الدراسية، التدريب التعاوني، الخدمات الإلكترونية، '
+            'متطلبات التخرج، اللوائح، ومتابعة الطلبات. اكتب سؤالك مباشرة أو افتح «دليل الخدمات» و«مركز المعرفة».'
+        )
+        thanks=['شكرا','شكرًا','مشكور','يعطيك العافية','تسلم','thanks','thank you']
+        if any(word in q for word in thanks):
+            return ('العفو! سعيد بمساعدتك. إذا احتجت أي شيء عن خدمات الكلية اسألني في أي وقت.', guide)
         greetings=['مرحبا','مرحباً','السلام عليكم','أهلا','اهلا','هلا','كيف حالك','كيف الحال','صباح الخير','مساء الخير','هاي','hello','hi']
         if any(word in q for word in greetings):
             return (
-                'أهلًا بك! أنا مُعين، مساعد المستفيدين في الكلية التطبيقية بشرورة بجامعة نجران. '
-                'أقدر أساعدك في الخدمات، القبول والتسجيل، الخطط الدراسية، التدريب التعاوني، '
-                'الخدمات الإلكترونية، ومتابعة طلباتك. اسألني مباشرة أو تصفّح مركز المعرفة.',
-                'دليل خدمة مُعين',
+                'أهلًا بك! أنا مُعين، مساعد المستفيدين في الكلية التطبيقية بشرورة بجامعة نجران. '+help_menu,
+                guide,
             )
         if any(word in q for word in ['من أنت','من انت','عنك','عرفني بنفسك','وش تسوي','ماذا تقدم','فكرة المشروع','عن المساعد']):
             return (
-                'أنا مُعين، مساعد عربي لخدمة طلاب وزوار الكلية التطبيقية بشرورة. '
-                'أجيب من قاعدة المعرفة المنشورة، وأوجّهك لفتح طلب إذا احتجت متابعة من الأدمن. '
-                'يمكنك أيضًا تفعيل GPT أو Gemini من بوابة الأدمن لردود أوسع.',
-                'دليل خدمة مُعين',
+                'أنا مُعين، مساعدك في الكلية التطبيقية بشرورة. '+help_menu+' '
+                'وإذا احتجت متابعة بشرية أنشئ طلبًا من «طلباتي».',
+                guide,
             )
         if any(word in q for word in ['خصوصية','بياناتي','الخصوصية']):
             return (
                 'تُحفظ محادثاتك وطلباتك في النظام وتُفصل حسب جلسة المتصفح أو حساب الطالب. '
-                'إعدادات الشات ومفاتيح API متاحة للأدمن فقط. عند تفعيل مزوّد خارجي تُرسل الأسئلة بعد موافقتك في المحادثة. '
-                'لا تشارك بيانات حساسة أو كلمات مرور.',
+                'عند تفعيل مزوّد خارجي تُرسل الأسئلة بعد موافقتك في المحادثة. لا تشارك بيانات حساسة.',
                 'آلية عمل الخدمة وإعدادات المزوّد',
             )
         selected=self.rank_knowledge(q, limit=3)
+        if not selected:
+            # Broader keyword routes so common questions still get a useful answer.
+            routes={
+                'قبول': 'القبول والتسجيل', 'تسجيل': 'القبول والتسجيل', 'تقديم': 'القبول والتسجيل',
+                'خطة': 'الخطط الدراسية', 'مقرر': 'الخطط الدراسية', 'جدول': 'الخطط الدراسية',
+                'تدريب': 'التدريب التعاوني', 'تعاوني': 'التدريب التعاوني',
+                'الكترون': 'الخدمات الإلكترونية', 'بوابة': 'الخدمات الإلكترونية', 'نظام': 'الخدمات الإلكترونية',
+                'تخرج': 'متطلبات التخرج', 'لائحة': 'اللوائح والأنظمة', 'غياب': 'اللوائح والأنظمة',
+                'دور': 'أدوار النظام', 'حساب': 'أدوار النظام', 'محادثة': 'كيف أستخدم مُعين؟',
+                'طلب': 'من السؤال إلى طلب المساعدة', 'مساعد': 'كيف أستخدم مُعين؟',
+            }
+            with self.db() as conn:
+                for key, title in routes.items():
+                    if key in q.replace('أ','ا').replace('إ','ا').replace('آ','ا'):
+                        row=conn.execute("SELECT * FROM knowledge WHERE status='published' AND title=?", (title,)).fetchone()
+                        if row:
+                            selected=[dict(row)]
+                            break
         if selected:
             top=selected[0]
             extras=[e for e in selected[1:] if e['id']!=top['id']]
             reply=top['content'].strip()
             if extras:
                 reply+='\n\nمعلومات إضافية ذات صلة:\n'+'\n'.join(f'• {e["title"]}: {e["content"][:220].rstrip(" .")}.' for e in extras[:2])
-            reply+='\n\nإذا احتجت تفاصيل رسمية أدق أو متابعة شخصية، أنشئ طلبًا من «طلباتي».'
+            reply+='\n\nإذا احتجت متابعة إضافية، أنا هنا—أو أنشئ طلبًا من «طلباتي».'
             source=' | '.join(dict.fromkeys(e['title']+' — '+e['source'] for e in selected))
             return reply, source
         return (
-            'لم أجد إجابة مطابقة تمامًا في المعرفة المنشورة. جرّب صياغة أوضح، أو تصفّح «مركز المعرفة» و«دليل الخدمات»، '
-            'أو سجّل طلبًا من «طلباتي» ليراجعه الأدمن. إن كان GPT أو Gemini مفعّلًا من الأدمن ستتسع قدرة الرد بعد الموافقة في المحادثة.',
-            None,
+            f'وصلتني رسالتك. {help_menu} '
+            'مثال: «ما متطلبات التدريب التعاوني؟» أو «كيف أصل للخدمات الإلكترونية؟»',
+            guide,
         )
 
     def generate(self, question, history, config):
@@ -266,25 +291,12 @@ class AIService:
             ids=result.get('source_ids')
             if not isinstance(result.get('answer'),str) or not result['answer'].strip() or len(result['answer'])>12000 or type(result.get('abstain')) is not bool or not isinstance(ids,list) or any(type(i) is not int or i not in {e['id'] for e in selected} for i in ids):
                 raise ValueError()
-            greeting=any(w in question for w in ['مرحبا','مرحباً','السلام عليكم','أهلا','اهلا','كيف حالك','كيف الحال','من أنت','من انت'])
-            if result['abstain']:
-                if greeting:
-                    return self.local_answer(question)
-                local_reply,local_source=self.local_answer(question)
-                if local_source:
-                    return local_reply,local_source
-                return FALLBACK,None
-            if not ids and not greeting:
-                local_reply,local_source=self.local_answer(question)
-                if local_source:
-                    return local_reply,local_source
-                return FALLBACK,None
+            greeting=any(w in question for w in ['مرحبا','مرحباً','السلام عليكم','أهلا','اهلا','كيف حالك','كيف الحال','من أنت','من انت','شكرا','شكرًا'])
+            if result['abstain'] or (not ids and not greeting):
+                return self.local_answer(question)
             if greeting and not ids:
                 return result['answer'].strip(), None
             sources=list(dict.fromkeys(e['title']+' — '+e['source'] for e in selected if e['id'] in ids))
             return result['answer'].strip(),' | '.join(sources) or None
         except (ValueError,TypeError,AttributeError):
-            local_reply,local_source=self.local_answer(question)
-            if local_source or any(w in question for w in ['مرحبا','كيف حالك','أهلا','اهلا']):
-                return local_reply,local_source
-            raise AIError('أعاد النموذج ردًا غير قابل للتحقق من مصادره. جرّب مجددًا أو أنشئ طلبًا للموظف.') from None
+            return self.local_answer(question)
