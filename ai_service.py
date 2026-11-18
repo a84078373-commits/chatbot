@@ -181,17 +181,61 @@ class AIService:
         stop={'في','من','ما','عن','هل','كيف','الي','على','و','او','هذا','هي','هو','ان','التي','الذي','اريد'}
         return {w.removeprefix('ال') for w in re.findall(r'[\w]+',text) if len(w)>1 and w not in stop}
 
-    def generate(self, question, history, config):
+    def rank_knowledge(self, question, limit=4):
         with self.db() as conn:
             entries=[dict(r) for r in conn.execute("SELECT * FROM knowledge WHERE status='published'")]
-            provider=dict(conn.execute('SELECT * FROM ai_providers WHERE provider=?',(config['provider'],)).fetchone())
         query=self.words(question)
         ranked=[]
         for entry in entries:
             title=self.words(entry['title']+' '+entry['question'])
             score=len(query & title)*3+len(query & self.words(entry['content']))
             if score:ranked.append((score,entry))
-        selected=[e for _,e in sorted(ranked,key=lambda v:v[0],reverse=True)[:4]]
+        return [e for _,e in sorted(ranked,key=lambda v:v[0],reverse=True)[:limit]]
+
+    def local_answer(self, question):
+        q=question.strip()
+        greetings=['مرحبا','مرحباً','السلام عليكم','أهلا','اهلا','هلا','كيف حالك','كيف الحال','صباح الخير','مساء الخير','هاي','hello','hi']
+        if any(word in q for word in greetings):
+            return (
+                'أهلًا بك! أنا مُعين، مساعد المستفيدين في الكلية التطبيقية بشرورة بجامعة نجران. '
+                'أقدر أساعدك في الخدمات، القبول والتسجيل، الخطط الدراسية، التدريب التعاوني، '
+                'الخدمات الإلكترونية، ومتابعة طلباتك. اسألني مباشرة أو تصفّح مركز المعرفة.',
+                'دليل خدمة مُعين',
+            )
+        if any(word in q for word in ['من أنت','من انت','عنك','عرفني بنفسك','وش تسوي','ماذا تقدم','فكرة المشروع','عن المساعد']):
+            return (
+                'أنا مُعين، مساعد عربي لخدمة طلاب وزوار الكلية التطبيقية بشرورة. '
+                'أجيب من قاعدة المعرفة المنشورة، وأوجّهك لفتح طلب إذا احتجت متابعة من الأدمن. '
+                'يمكنك أيضًا تفعيل GPT أو Gemini من بوابة الأدمن لردود أوسع.',
+                'دليل خدمة مُعين',
+            )
+        if any(word in q for word in ['خصوصية','بياناتي','الخصوصية']):
+            return (
+                'تُحفظ محادثاتك وطلباتك في النظام وتُفصل حسب جلسة المتصفح أو حساب الطالب. '
+                'إعدادات الشات ومفاتيح API متاحة للأدمن فقط. عند تفعيل مزوّد خارجي تُرسل الأسئلة بعد موافقتك في المحادثة. '
+                'لا تشارك بيانات حساسة أو كلمات مرور.',
+                'آلية عمل الخدمة وإعدادات المزوّد',
+            )
+        selected=self.rank_knowledge(q, limit=3)
+        if selected:
+            top=selected[0]
+            extras=[e for e in selected[1:] if e['id']!=top['id']]
+            reply=top['content'].strip()
+            if extras:
+                reply+='\n\nمعلومات إضافية ذات صلة:\n'+'\n'.join(f'• {e["title"]}: {e["content"][:220].rstrip(" .")}.' for e in extras[:2])
+            reply+='\n\nإذا احتجت تفاصيل رسمية أدق أو متابعة شخصية، أنشئ طلبًا من «طلباتي».'
+            source=' | '.join(dict.fromkeys(e['title']+' — '+e['source'] for e in selected))
+            return reply, source
+        return (
+            'لم أجد إجابة مطابقة تمامًا في المعرفة المنشورة. جرّب صياغة أوضح، أو تصفّح «مركز المعرفة» و«دليل الخدمات»، '
+            'أو سجّل طلبًا من «طلباتي» ليراجعه الأدمن. إن كان GPT أو Gemini مفعّلًا من الأدمن ستتسع قدرة الرد بعد الموافقة في المحادثة.',
+            None,
+        )
+
+    def generate(self, question, history, config):
+        selected=self.rank_knowledge(question, limit=4)
+        with self.db() as conn:
+            provider=dict(conn.execute('SELECT * FROM ai_providers WHERE provider=?',(config['provider'],)).fetchone())
         context=[{'id':e['id'],'title':e['title'],'source':e['source'],'text':e['content'][:3500]} for e in selected]
         messages=[{'role':m['role'],'content':m['content'][:2000]} for m in history[-4:]]
         messages.append({'role':'user','content':json.dumps({'question':question,'sources':context},ensure_ascii=False)})
@@ -203,13 +247,25 @@ class AIService:
             ids=result.get('source_ids')
             if not isinstance(result.get('answer'),str) or not result['answer'].strip() or len(result['answer'])>12000 or type(result.get('abstain')) is not bool or not isinstance(ids,list) or any(type(i) is not int or i not in {e['id'] for e in selected} for i in ids):
                 raise ValueError()
+            greeting=any(w in question for w in ['مرحبا','مرحباً','السلام عليكم','أهلا','اهلا','كيف حالك','كيف الحال','من أنت','من انت'])
             if result['abstain']:
+                if greeting:
+                    return self.local_answer(question)
+                local_reply,local_source=self.local_answer(question)
+                if local_source:
+                    return local_reply,local_source
                 return FALLBACK,None
-            # Unsupported substantive answers never get displayed as sourced facts.
-            greeting=any(w in question for w in ['مرحبا','السلام عليكم','أهلا','اهلا','من أنت','من انت'])
             if not ids and not greeting:
+                local_reply,local_source=self.local_answer(question)
+                if local_source:
+                    return local_reply,local_source
                 return FALLBACK,None
+            if greeting and not ids:
+                return result['answer'].strip(), None
             sources=list(dict.fromkeys(e['title']+' — '+e['source'] for e in selected if e['id'] in ids))
             return result['answer'].strip(),' | '.join(sources) or None
         except (ValueError,TypeError,AttributeError):
+            local_reply,local_source=self.local_answer(question)
+            if local_source or any(w in question for w in ['مرحبا','كيف حالك','أهلا','اهلا']):
+                return local_reply,local_source
             raise AIError('أعاد النموذج ردًا غير قابل للتحقق من مصادره. جرّب مجددًا أو أنشئ طلبًا للموظف.') from None
