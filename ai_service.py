@@ -9,6 +9,18 @@ import requests
 from cryptography.fernet import Fernet, InvalidToken
 
 PROVIDERS = {'local': 'الوضع الأساسي', 'openai': 'OpenAI / GPT', 'gemini': 'Google Gemini'}
+# gemini-2.0-flash and similar IDs were shut down by Google; map them to current text models.
+GEMINI_MODEL_ALIASES = {
+    'gemini-2.0-flash': 'gemini-3.5-flash-lite',
+    'gemini-2.0-flash-001': 'gemini-3.5-flash-lite',
+    'gemini-2.0-flash-lite': 'gemini-3.5-flash-lite',
+    'gemini-1.5-flash': 'gemini-3.5-flash-lite',
+    'gemini-1.5-flash-latest': 'gemini-3.5-flash-lite',
+    'gemini-1.5-pro': 'gemini-3.8-flash',
+    'gemini-2.5-flash': 'gemini-3.5-flash-lite',
+    'gemini-2.5-pro': 'gemini-3.8-flash',
+    'gemini-pro': 'gemini-3.5-flash-lite',
+}
 SYSTEM = '''أنت مُعين، مساعد عربي لخدمة مستفيدي الكلية التطبيقية بشرورة بجامعة نجران.
 أجب بالعربية باختصار ووضوح. استند فقط إلى المصادر المرفقة للحقائق الجامعية والإجراءات والمواعيد.
 لا تخترع موعدًا أو شرطًا أو لائحة أو مصدرًا. إذا لم تكف المصادر، امتنع واقترح إنشاء طلب للموظف.
@@ -81,7 +93,12 @@ class AIService:
             raise AIError('راجع حد الرد (٢٥٦–٤٠٩٦) والتعليمات الإضافية (٢٠٠٠ حرف).')
         if provider != 'local':
             model, key = data.get('model',''), data.get('api_key','')
-            if not isinstance(model,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}',model):
+            if not isinstance(model,str):
+                raise AIError('أدخل معرّف النموذج المتاح في حسابك، بحروف إنجليزية وأرقام ونقاط وشرطات فقط.')
+            model = model.strip().removeprefix('models/')
+            if provider == 'gemini':
+                model = GEMINI_MODEL_ALIASES.get(model, model)
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}', model):
                 raise AIError('أدخل معرّف النموذج المتاح في حسابك، بحروف إنجليزية وأرقام ونقاط وشرطات فقط.')
             if not isinstance(key,str) or len(key)>2048 or any(ord(c)<33 or ord(c)>126 for c in key):
                 raise AIError('راجع مفتاح API؛ يجب ألا يحتوي مسافات أو أسطر جديدة.')
@@ -115,6 +132,8 @@ class AIService:
             headers={'Authorization':f'Bearer {key}'}
             body={'model':model,'instructions':instructions,'input':messages,'max_output_tokens':max_tokens,'store':False}
         elif provider=='gemini':
+            model=str(model).strip().removeprefix('models/')
+            model=GEMINI_MODEL_ALIASES.get(model, model)
             url=f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
             headers={'x-goog-api-key':key}
             body={'systemInstruction':{'parts':[{'text':instructions}]},'contents':[{'role':'model' if m['role']=='assistant' else 'user','parts':[{'text':m['content']}]} for m in messages],'generationConfig':{'maxOutputTokens':max_tokens}}
@@ -129,11 +148,11 @@ class AIService:
         if response.status_code!=200:
             hints={
                 'openai':'جرّب مثلًا: gpt-4.1-mini أو gpt-4o-mini',
-                'gemini':'جرّب مثلًا: gemini-2.0-flash أو gemini-1.5-flash',
+                'gemini':'gemini-2.0-flash متوقف. جرّب: gemini-3.5-flash-lite أو gemini-3.8-flash أو gemini-flash-latest',
             }
             error={
                 400:f'رفض المزوّد إعدادات الطلب للنموذج «{model}». تحقّق من اسمه ودعمه لتوليد النص. {hints.get(provider,"")}',
-                401:'مفتاح API غير صالح أو منتهي.',
+                401:'مفتاح API غير صالح أو منتهي. أنشئ مفتاحًا جديدًا من Google AI Studio.',
                 403:f'ليس للمفتاح صلاحية الوصول إلى النموذج «{model}».',
                 404:f'لم يُعثر على النموذج «{model}». أدخل معرّفًا متاحًا لحسابك من إعدادات الأدمن. {hints.get(provider,"")}',
                 429:'تم بلوغ حصة الاستخدام أو حد الطلبات؛ راجع رصيد المزوّد.',

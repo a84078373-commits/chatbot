@@ -10,9 +10,24 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
-from ai_service import AIService, AIError
+from ai_service import AIService, AIError, GEMINI_MODEL_ALIASES
 
 ROOT = Path(__file__).resolve().parent
+
+def _load_dotenv(path=ROOT / '.env'):
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding='utf-8').splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+_load_dotenv()
+
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 secret_path = ROOT / '.session-key'
@@ -120,6 +135,12 @@ with db() as conn:
 seed_demo_accounts()
 
 ai = AIService(db, os.environ.get('AI_ENCRYPTION_KEY_FILE', str(ROOT / '.ai-encryption-key')))
+with db() as conn:
+    for old_model, new_model in GEMINI_MODEL_ALIASES.items():
+        conn.execute(
+            "UPDATE ai_providers SET model=?, tested_at=NULL, test_ok=NULL WHERE provider='gemini' AND model=?",
+            (new_model, old_model),
+        )
 ai_slots = threading.BoundedSemaphore(2)
 ai_attempts = {}
 ai_attempt_lock = threading.Lock()

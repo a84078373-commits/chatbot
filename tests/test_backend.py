@@ -17,7 +17,7 @@ import requests
 class BackendTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING']=True
-        self.env=patch.dict(os.environ,{'OPENAI_API_KEY':'','GEMINI_API_KEY':''})
+        self.env=patch.dict(os.environ,{'OPENAI_API_KEY':'','GEMINI_API_KEY':'','ALLOW_REMOTE_STAFF_SETUP':''})
         self.env.start()
         self.addCleanup(self.env.stop)
         with db() as c:

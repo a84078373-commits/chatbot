@@ -1,7 +1,7 @@
 function settingsTabs(active){return `<div class="settings-tabs"><a href="#account" class="${active==='account'?'active':''}">${icon('user')} الحساب والأمان</a><a href="#ai" class="${active==='ai'?'active':''}">${icon('spark')} ربط الذكاء الاصطناعي</a></div>`;}
 const MODEL_SUGGESTIONS={
   openai:['gpt-4.1-mini','gpt-4o-mini','gpt-4.1','gpt-4o'],
-  gemini:['gemini-2.0-flash','gemini-1.5-flash','gemini-2.0-flash-lite','gemini-1.5-pro'],
+  gemini:['gemini-3.5-flash-lite','gemini-3.8-flash','gemini-3.6-flash','gemini-flash-latest'],
 };
 function renderAISettings(config){
   let provider=config.provider;
@@ -14,7 +14,7 @@ function renderAISettings(config){
     $('#model-help').textContent=p==='openai'
       ?'لـ OpenAI استخدم معرّفًا مثل gpt-4.1-mini أو gpt-4o-mini (وليس كلمة ChatGPT).'
       :p==='gemini'
-      ?'لـ Gemini استخدم معرّفًا مثل gemini-2.0-flash بدون بادئة models/.'
+      ?'gemini-2.0-flash متوقف. استخدم gemini-3.5-flash-lite أو gemini-3.8-flash بدون بادئة models/.'
       :'اكتب معرّف النموذج كما يظهر في حساب المزوّد.';
   }
   function select(p){
